@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Falaí">
+  <defs>
+    <linearGradient id="g" x1="96" y1="64" x2="424" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7B955" />
+      <stop offset=".45" stop-color="#F26E5F" />
+      <stop offset="1" stop-color="#45B990" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="136" fill="#FFF4E8" />
+  <circle cx="256" cy="256" r="168" fill="url(#g)" />
+  <path
+    fill="#FFF8EF"
+    d="M256 139c-30 0-54 24-54 54v68c0 30 24 54 54 54s54-24 54-54v-68c0-30-24-54-54-54Zm92 112a18 18 0 0 0-36 0c0 31-25 56-56 56s-56-25-56-56a18 18 0 0 0-36 0c0 44 32 81 74 89v31h-26a18 18 0 0 0 0 36h88a18 18 0 0 0 0-36h-26v-31c42-8 74-45 74-89Z"
+  />
+</svg>
