@@ -11,7 +11,7 @@ export function AudioWaveIndicator({ active }: AudioWaveIndicatorProps) {
     <div className="flex h-8 items-center justify-center gap-1.5" aria-hidden="true">
       {bars.map((scale, index) => (
         <motion.span
-          className="block w-1.5 rounded-full bg-white/86"
+          className="block w-1.5 rounded-full bg-current/80"
           initial={{ height: 10 }}
           animate={
             active

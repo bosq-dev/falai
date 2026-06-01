@@ -11,6 +11,12 @@ const TRANSLATION_CLIENT_SECRET_ENDPOINT =
   "https://api.openai.com/v1/realtime/translations/client_secrets";
 const TRANSLATION_CALL_ENDPOINT = "https://api.openai.com/v1/realtime/translations/calls";
 
+// Set to true to log the realtime connection lifecycle to the console for debugging.
+const DEBUG_REALTIME = false;
+function dbg(...args: unknown[]) {
+  if (DEBUG_REALTIME) console.log("[realtime]", ...args);
+}
+
 type StartRealtimeTranslationOptions = {
   apiKey: string;
   sourceLanguage: Language;
@@ -50,7 +56,9 @@ export async function startClientOnlyRealtimeTranslation({
   let sourceStream: MediaStream;
   try {
     sourceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
+    dbg("microphone granted, tracks:", sourceStream.getAudioTracks().length);
+  } catch (error) {
+    dbg("getUserMedia failed", error);
     throw new RealtimeFriendlyError("microphone", "Não conseguimos acessar o microfone.");
   }
 
@@ -66,9 +74,13 @@ export async function startClientOnlyRealtimeTranslation({
 
   pc.ontrack = ({ receiver, streams }) => {
     const [stream] = streams;
+    dbg("remote track received, stream:", Boolean(stream));
     if (stream) {
       audioElement.srcObject = stream;
-      audioElement.play().catch(() => undefined);
+      audioElement
+        .play()
+        .then(() => dbg("audioElement.play() ok"))
+        .catch((error) => dbg("audioElement.play() rejected", error));
       cleanupRemoteAudioMeter();
       cleanupRemoteAudioMeter = startRemoteAudioActivityMeter(receiver, () => {
         onOutputActivity?.();
@@ -109,6 +121,7 @@ export async function startClientOnlyRealtimeTranslation({
   });
 
   pc.addEventListener("connectionstatechange", () => {
+    dbg("connectionState:", pc.connectionState);
     if (pc.connectionState === "connected") {
       onStatus?.("connected");
       onStatus?.("listening");
@@ -120,10 +133,12 @@ export async function startClientOnlyRealtimeTranslation({
   });
 
   try {
+    dbg("requesting client secret, target:", targetLanguage.openAIOutputLanguageCode);
     const clientSecret = await createTranslationClientSecret({
       apiKey,
       targetLanguage,
     });
+    dbg("client secret obtained");
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
@@ -136,6 +151,7 @@ export async function startClientOnlyRealtimeTranslation({
       },
       body: offer.sdp ?? "",
     });
+    dbg("SDP /calls response status:", sdpResponse.status);
 
     if (!sdpResponse.ok) {
       throw await friendlyFromResponse(sdpResponse);
@@ -182,6 +198,7 @@ async function createTranslationClientSecret({
       }),
     });
 
+    dbg("client_secrets response status:", response.status);
     if (!response.ok) {
       throw await friendlyFromResponse(response);
     }
@@ -198,6 +215,7 @@ async function createTranslationClientSecret({
 
     return value;
   } catch (error) {
+    dbg("createTranslationClientSecret error", error);
     throw normalizeRealtimeError(error);
   }
 }

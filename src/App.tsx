@@ -21,7 +21,7 @@ export default function App() {
   const outputDrainTimerRef = useRef<number | null>(null);
   const appStateRef = useRef<AppState>("needsApiKey");
   const runIdRef = useRef(0);
-  const isPressingRef = useRef(false);
+  const isSessionActiveRef = useRef(false);
   const lastOutputAtRef = useRef(0);
   const finishingStartedAtRef = useRef(0);
   const stopAfterOutputDrainRef = useRef(false);
@@ -140,7 +140,7 @@ export default function App() {
       return;
     }
 
-    if (stopAfterOutputDrainRef.current || !isPressingRef.current) {
+    if (stopAfterOutputDrainRef.current || !isSessionActiveRef.current) {
       runIdRef.current += 1;
       stopRealtime();
       syncReadyState(hasApiKey);
@@ -152,7 +152,7 @@ export default function App() {
   }
 
   function resumeListeningAfterInputStarts() {
-    if (!isPressingRef.current) return;
+    if (!isSessionActiveRef.current) return;
 
     clearOutputDrainTimer();
     finishingStartedAtRef.current = 0;
@@ -160,18 +160,41 @@ export default function App() {
     setSessionState("listening", "listening");
   }
 
-  async function handleHoldStart() {
+  function handleToggle() {
     if (!hasApiKey) {
       setSettingsOpen(true);
       setSessionState("needsApiKey", "idle");
       return;
     }
 
-    if (!audioRef.current || isLocked) return;
+    // A tap while a session is active stops it (draining any in-flight translation first).
+    if (isLocked) {
+      stopSession();
+      return;
+    }
+
+    void startSession();
+  }
+
+  function stopSession() {
+    isSessionActiveRef.current = false;
+
+    if (appState === "connecting" && !realtimeRef.current) {
+      runIdRef.current += 1;
+      stopRealtime();
+      syncReadyState(hasApiKey);
+      return;
+    }
+
+    enterFinishingTranslation(true);
+  }
+
+  async function startSession() {
+    if (!audioRef.current) return;
 
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
-    isPressingRef.current = true;
+    isSessionActiveRef.current = true;
     setLastFriendlyError("");
     setSessionState("connecting", "listening");
 
@@ -216,7 +239,7 @@ export default function App() {
         },
       });
 
-      if (runIdRef.current !== runId || !isPressingRef.current) {
+      if (runIdRef.current !== runId || !isSessionActiveRef.current) {
         session.stop();
         return;
       }
@@ -229,26 +252,6 @@ export default function App() {
         error instanceof RealtimeFriendlyError ? error.friendlyMessage : "Algo deu errado";
       setLastFriendlyError(friendlyMessage);
       setSessionState("error", "error");
-    }
-  }
-
-  function handleHoldEnd() {
-    isPressingRef.current = false;
-
-    if (appState === "connecting" && !realtimeRef.current) {
-      runIdRef.current += 1;
-      stopRealtime();
-      syncReadyState(hasApiKey);
-      return;
-    }
-
-    if (
-      appState === "connecting" ||
-      appState === "listening" ||
-      appState === "finishingTranslation" ||
-      appState === "translating"
-    ) {
-      enterFinishingTranslation(true);
     }
   }
 
@@ -328,10 +331,9 @@ export default function App() {
           activeLanguage={activeLanguage}
           dialState={dialState}
           disabled={false}
-          onHoldEnd={handleHoldEnd}
-          onHoldStart={handleHoldStart}
           onRetry={handleRetry}
           onSwitch={handleSwitchActiveLanguage}
+          onToggle={handleToggle}
           otherLanguage={otherLanguage}
         />
 
@@ -343,7 +345,7 @@ export default function App() {
                 ? "Finalizando tradução..."
                 : dialState === "translating"
                   ? `Traduzindo para ${otherLanguage.label}...`
-                  : "Segure para falar"}
+                  : "Toque para falar"}
           </p>
           <p className="mt-1 text-sm font-medium text-white/48">Arraste para trocar idioma</p>
           <p className="mt-3 inline-flex rounded-full bg-white/10 px-4 py-2 text-sm font-bold text-white shadow-sm ring-1 ring-white/12">

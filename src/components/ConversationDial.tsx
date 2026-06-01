@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type MotionValue, type Variants } from "framer-motion";
 import { Mic, RotateCcw } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { hapticTap } from "../lib/haptics";
 import type { Language } from "../types/language";
 import type { DialState } from "../types/realtime";
@@ -12,8 +12,7 @@ type ConversationDialProps = {
   dialState: DialState;
   disabled?: boolean;
   onSwitch: () => void;
-  onHoldStart: () => void;
-  onHoldEnd: () => void;
+  onToggle: () => void;
   onRetry: () => void;
 };
 
@@ -45,8 +44,7 @@ export function ConversationDial({
   dialState,
   disabled,
   onSwitch,
-  onHoldStart,
-  onHoldEnd,
+  onToggle,
   onRetry,
 }: ConversationDialProps) {
   const dragOffset = useMotionValue(0);
@@ -57,8 +55,7 @@ export function ConversationDial({
 
   const pointerStart = useRef({ x: 0, y: 0 });
   const pointerCurrent = useRef({ x: 0, y: 0 });
-  const holdTimer = useRef<number | null>(null);
-  const isHolding = useRef(false);
+  const isPointerDown = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [switchDirection, setSwitchDirection] = useState<1 | -1>(1);
 
@@ -68,68 +65,42 @@ export function ConversationDial({
     dialState === "translating";
   const isError = dialState === "error";
 
-  useEffect(() => {
-    return () => {
-      if (holdTimer.current) window.clearTimeout(holdTimer.current);
-    };
-  }, []);
-
-  function clearHoldTimer() {
-    if (holdTimer.current) {
-      window.clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  }
-
   function updateDragOffset(deltaX: number) {
     const clampedDeltaX = Math.max(-NAME_DRAG_LIMIT_PX, Math.min(NAME_DRAG_LIMIT_PX, deltaX));
     dragOffset.set(clampedDeltaX);
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (disabled || isLive || dragging || isError) return;
+    if (disabled || isError) return;
 
     pointerStart.current = { x: event.clientX, y: event.clientY };
     pointerCurrent.current = { x: event.clientX, y: event.clientY };
-    isHolding.current = false;
+    isPointerDown.current = true;
     setDragging(false);
     dragOffset.set(0);
     event.currentTarget.setPointerCapture(event.pointerId);
-    clearHoldTimer();
-    holdTimer.current = window.setTimeout(() => {
-      if (!dragging) {
-        isHolding.current = true;
-        hapticTap(8);
-        onHoldStart();
-      }
-    }, 150);
   }
 
   function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (disabled || isLive || isError) return;
+    if (!isPointerDown.current || disabled || isError) return;
 
     pointerCurrent.current = { x: event.clientX, y: event.clientY };
+
+    // Dragging to switch languages is only available when not in a live session.
+    if (isLive) return;
 
     const deltaX = event.clientX - pointerStart.current.x;
     const dx = Math.abs(deltaX);
     const dy = Math.abs(event.clientY - pointerStart.current.y);
     if ((dragging || dx > DRAG_INTENT_PX) && dx > dy) {
-      clearHoldTimer();
-      if (isHolding.current) {
-        isHolding.current = false;
-        onHoldEnd();
-      }
       setDragging(true);
       updateDragOffset(deltaX);
     }
   }
 
   function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
-    clearHoldTimer();
-    if (isHolding.current) {
-      isHolding.current = false;
-      onHoldEnd();
-    }
+    if (!isPointerDown.current) return;
+    isPointerDown.current = false;
 
     const deltaX = pointerCurrent.current.x - pointerStart.current.x;
     if (dragging && Math.abs(deltaX) >= SWITCH_THRESHOLD_PX) {
@@ -141,6 +112,10 @@ export function ConversationDial({
         onSwitch();
         dragOffset.set(0);
       }, 90);
+    } else if (!dragging) {
+      // A plain tap toggles listening on/off.
+      hapticTap(8);
+      onToggle();
     } else {
       dragOffset.set(0);
     }
@@ -152,11 +127,7 @@ export function ConversationDial({
   }
 
   function handlePointerCancel(event: React.PointerEvent<HTMLDivElement>) {
-    clearHoldTimer();
-    if (isHolding.current) {
-      isHolding.current = false;
-      onHoldEnd();
-    }
+    isPointerDown.current = false;
     dragOffset.set(0);
     setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -232,10 +203,10 @@ function DialFace({
         filter: error ? "saturate(0.35) brightness(0.92)" : "saturate(1)",
       }}
     >
-      <div className="absolute inset-[7%] rounded-full border border-white/26" />
-      <div className="absolute inset-[16%] rounded-full bg-white/10" />
-      <div className="relative flex h-full w-full flex-col items-center justify-center px-8 text-center text-white">
-        <div className="mb-3 grid h-14 w-14 place-items-center rounded-full bg-white/20 shadow-inner backdrop-blur">
+      <div className={`absolute inset-[7%] rounded-full border ${error ? "border-white/26" : "border-indigo-950/15"}`} />
+      <div className={`absolute inset-[16%] rounded-full ${error ? "bg-white/10" : "bg-indigo-950/[0.04]"}`} />
+      <div className={`relative flex h-full w-full flex-col items-center justify-center px-8 text-center ${error ? "text-white" : "text-indigo-950"}`}>
+        <div className={`mb-3 grid h-14 w-14 place-items-center rounded-full shadow-inner backdrop-blur ${error ? "bg-white/20" : "bg-indigo-950/10"}`}>
           {error ? <RotateCcw size={28} /> : <Mic size={30} />}
         </div>
         <div className="min-h-[5.4rem]">
@@ -260,14 +231,14 @@ function DialFace({
               </motion.p>
             </AnimatePresence>
           </motion.div>
-          <p className="mt-2 text-sm font-semibold text-white/88">
+          <p className={`mt-2 text-sm font-semibold ${error ? "text-white/88" : "text-indigo-950/80"}`}>
             {error
               ? "Tentar novamente"
               : active
                 ? `Ouvindo ${language.label}...`
-                : "Segure para falar"}
+                : "Toque para falar"}
           </p>
-          <p className="mt-1 text-xs font-medium text-white/76">
+          <p className={`mt-1 text-xs font-medium ${error ? "text-white/76" : "text-indigo-950/60"}`}>
             {`Traduzindo para ${otherLanguage.label}...`}
           </p>
         </div>
